@@ -2,60 +2,53 @@
 
 set -e
 
-if [ "${POSTGRES_DB}" = "**None**" -a "${POSTGRES_DB_FILE}" = "**None**" ]; then
-  echo "You need to set the POSTGRES_DB or POSTGRES_DB_FILE environment variable."
+if [ "${MYSQL_DB}" = "**None**" -a "${MYSQL_DB_FILE}" = "**None**" ]; then
+  echo "You need to set the MYSQL_DB or MYSQL_DB_FILE environment variable."
   exit 1
 fi
 
-if [ "${POSTGRES_HOST}" = "**None**" ]; then
-  if [ -n "${POSTGRES_PORT_5432_TCP_ADDR}" ]; then
-    POSTGRES_HOST=${POSTGRES_PORT_5432_TCP_ADDR}
-    POSTGRES_PORT=${POSTGRES_PORT_5432_TCP_PORT}
-  else
-    echo "You need to set the POSTGRES_HOST environment variable."
-    exit 1
-  fi
-fi
-
-if [ "${POSTGRES_USER}" = "**None**" -a "${POSTGRES_USER_FILE}" = "**None**" ]; then
-  echo "You need to set the POSTGRES_USER or POSTGRES_USER_FILE environment variable."
+if [ "${MYSQL_HOST}" = "**None**" ]; then
+  echo "You need to set the MYSQL_HOST environment variable."
   exit 1
 fi
 
-if [ "${POSTGRES_PASSWORD}" = "**None**" -a "${POSTGRES_PASSWORD_FILE}" = "**None**" -a "${POSTGRES_PASSFILE_STORE}" = "**None**" ]; then
-  echo "You need to set the POSTGRES_PASSWORD or POSTGRES_PASSWORD_FILE or POSTGRES_PASSFILE_STORE environment variable or link to a container named POSTGRES."
+if [ "${MYSQL_USER}" = "**None**" -a "${MYSQL_USER_FILE}" = "**None**" ]; then
+  echo "You need to set the MYSQL_USER or MYSQL_USER_FILE environment variable."
+  exit 1
+fi
+
+if [ "${MYSQL_PASSWORD}" = "**None**" -a "${MYSQL_PASSWORD_FILE}" = "**None**" -a "${MYSQL_PASSFILE_STORE}" = "**None**" ]; then
+  echo "You need to set the MYSQL_PASSWORD or MYSQL_PASSWORD_FILE or MYSQL_PASSFILE_STORE environment variable or link to a container named MYSQL."
   exit 1
 fi
 
 #Process vars
-if [ "${POSTGRES_DB_FILE}" = "**None**" ]; then
-  POSTGRES_DBS=$(echo "${POSTGRES_DB}" | tr , " ")
-elif [ -r "${POSTGRES_DB_FILE}" ]; then
-  POSTGRES_DBS=$(cat "${POSTGRES_DB_FILE}")
+if [ "${MYSQL_DB_FILE}" = "**None**" ]; then
+  MYSQL_DBS=$(echo "${MYSQL_DB}" | tr , " ")
+elif [ -r "${MYSQL_DB_FILE}" ]; then
+  MYSQL_DBS=$(cat "${MYSQL_DB_FILE}")
 else
-  echo "Missing POSTGRES_DB_FILE file."
+  echo "Missing MYSQL_DB_FILE file."
   exit 1
 fi
-if [ "${POSTGRES_USER_FILE}" = "**None**" ]; then
-  export PGUSER="${POSTGRES_USER}"
-elif [ -r "${POSTGRES_USER_FILE}" ]; then
-  export PGUSER=$(cat "${POSTGRES_USER_FILE}")
+if [ "${MYSQL_USER_FILE}" = "**None**" ]; then
+  export MYSQLUSER="${MYSQL_USER}"
+elif [ -r "${MYSQL_USER_FILE}" ]; then
+  export MYSQLUSER=$(cat "${MYSQL_USER_FILE}")
 else
-  echo "Missing POSTGRES_USER_FILE file."
+  echo "Missing MYSQL_USER_FILE file."
   exit 1
 fi
-if [ "${POSTGRES_PASSWORD_FILE}" = "**None**" -a "${POSTGRES_PASSFILE_STORE}" = "**None**" ]; then
-  export PGPASSWORD="${POSTGRES_PASSWORD}"
-elif [ -r "${POSTGRES_PASSWORD_FILE}" ]; then
-  export PGPASSWORD=$(cat "${POSTGRES_PASSWORD_FILE}")
-elif [ -r "${POSTGRES_PASSFILE_STORE}" ]; then
-  export PGPASSFILE="${POSTGRES_PASSFILE_STORE}"
+if [ "${MYSQL_PASSWORD_FILE}" = "**None**" ]; then
+  export MYSQLPASSWORD="${MYSQL_PASSWORD}"
+elif [ -r "${MYSQL_PASSWORD_FILE}" ]; then
+  export MYSQLPASSWORD=$(cat "${MYSQL_PASSWORD_FILE}")
 else
-  echo "Missing POSTGRES_PASSWORD_FILE or POSTGRES_PASSFILE_STORE file."
+  echo "Missing MYSQL_PASSWORD_FILE file."
   exit 1
 fi
-export PGHOST="${POSTGRES_HOST}"
-export PGPORT="${POSTGRES_PORT}"
+export MYSQLHOST="${MYSQL_HOST}"
+export MYSQLPORT="${MYSQL_PORT}"
 KEEP_DAYS=${BACKUP_KEEP_DAYS}
 KEEP_WEEKS=`expr $(((${BACKUP_KEEP_WEEKS} * 7) + 1))`
 KEEP_MONTHS=`expr $(((${BACKUP_KEEP_MONTHS} * 31) + 1))`
@@ -64,19 +57,16 @@ KEEP_MONTHS=`expr $(((${BACKUP_KEEP_MONTHS} * 31) + 1))`
 mkdir -p "${BACKUP_DIR}/daily/" "${BACKUP_DIR}/weekly/" "${BACKUP_DIR}/monthly/"
 
 #Loop all databases
-for DB in ${POSTGRES_DBS}; do
+for DB in ${MYSQL_DBS}; do
   #Initialize filename vers
   DFILE="${BACKUP_DIR}/daily/${DB}-`date +%Y%m%d-%H%M%S`${BACKUP_SUFFIX}"
   WFILE="${BACKUP_DIR}/weekly/${DB}-`date +%G%V`${BACKUP_SUFFIX}"
   MFILE="${BACKUP_DIR}/monthly/${DB}-`date +%Y%m`${BACKUP_SUFFIX}"
+
   #Create dump
-  if [ "${POSTGRES_CLUSTER}" = "TRUE" ]; then
-    echo "Creating cluster dump of ${DB} database from ${POSTGRES_HOST}..."
-    pg_dumpall -l "${DB}" ${POSTGRES_EXTRA_OPTS} | gzip > "${DFILE}"
-  else
-    echo "Creating dump of ${DB} database from ${POSTGRES_HOST}..."
-    pg_dump -d "${DB}" -f "${DFILE}" ${POSTGRES_EXTRA_OPTS}
-  fi
+  echo "Creating dump of ${DB} database from ${MYSQL_HOST}..."
+  mysqldump --host="${MYSQLHOST}" --user="${MYSQLUSER}" --password="${MYSQLPASSWORD}" --port="${MYSQLPORT}" "${MYSQL_EXTRA_OPTS}" "${DB}" | gzip > "${DFILE}"
+
   #Copy (hardlink) for each entry
   if [ -d "${DFILE}" ]; then
     WFILENEW="${WFILE}-new"
@@ -93,7 +83,7 @@ for DB in ${POSTGRES_DBS}; do
     ln -vf "${DFILE}" "${MFILE}"
   fi
   #Clean old files
-  echo "Cleaning older than ${KEEP_DAYS} days for ${DB} database from ${POSTGRES_HOST}..."
+  echo "Cleaning older than ${KEEP_DAYS} days for ${DB} database from ${MYSQL_HOST}..."
   find "${BACKUP_DIR}/daily" -maxdepth 1 -mtime +${KEEP_DAYS} -name "${DB}-*${BACKUP_SUFFIX}" -exec rm -rf '{}' ';'
   find "${BACKUP_DIR}/weekly" -maxdepth 1 -mtime +${KEEP_WEEKS} -name "${DB}-*${BACKUP_SUFFIX}" -exec rm -rf '{}' ';'
   find "${BACKUP_DIR}/monthly" -maxdepth 1 -mtime +${KEEP_MONTHS} -name "${DB}-*${BACKUP_SUFFIX}" -exec rm -rf '{}' ';'
