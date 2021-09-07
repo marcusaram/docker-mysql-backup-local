@@ -2,8 +2,11 @@
 
 # mysql-backup-local
 
+[Source](https://github.com/marcusaram/docker-mysql-backup-local)
+
 Backup MySQL to the local filesystem with periodic rotating backups, based on [prodrigestivill/docker-postgres-backup-local](https://github.com/prodrigestivill/docker-postgres-backup-local).
 Backup multiple databases from the same host by setting the database names in `MYSQL_DB` separated by commas or spaces.
+This image works also on environments where containers are not running as root, such as OpenShift.
 
 ## Usage
 
@@ -44,7 +47,7 @@ By default this container makes daily backups, but you can start a manual backup
 This script as example creates one backup as the running user and saves it the working folder.
 
 ```sh
-docker run --rm -v "$PWD:/backups" -u "$(id -u):$(id -g)" -e MYSQL_HOST=MYSQL -e MYSQL_DB=dbname -e MYSQL_USER=user -e MYSQL_PASSWORD=password  prodrigestivill/MYSQL-backup-local /backup.sh
+docker run --rm -v "$PWD:/backups" -u "$(id -u):$(id -g)" -e MYSQL_HOST=MYSQL -e MYSQL_DB=dbname -e MYSQL_USER=user -e MYSQL_PASSWORD=password  oxar/mysql-backup-local /backup.sh
 ```
 
 ### Automatic Periodic Backups
